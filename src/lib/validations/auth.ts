@@ -77,3 +77,29 @@ export const onboardingSchema = z.object({
 });
 
 export type OnboardingInput = z.infer<typeof onboardingSchema>;
+
+export function getSafeCallbackUrl(rawUrl?: string | string[] | null): string {
+  if (!rawUrl || typeof rawUrl !== "string") {
+    return "/dashboard";
+  }
+
+  const trimmed = rawUrl.trim();
+
+  // Allow internal relative paths (e.g. /dashboard, /studio/video, /projects)
+  // Prevent protocol-relative URLs (e.g. //evil.com or /\evil.com)
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.startsWith("/\\")) {
+    return trimmed;
+  }
+
+  // If full URL, verify origin match
+  try {
+    const parsed = new URL(trimmed);
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL || "https://vantaaii.vercel.app";
+    const appOrigin = new URL(appUrl).origin;
+    if (parsed.origin === appOrigin) {
+      return parsed.pathname + parsed.search;
+    }
+  } catch {}
+
+  return "/dashboard";
+}

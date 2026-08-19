@@ -287,10 +287,12 @@ export async function continueAsGuestAction() {
       });
 
       if (session && session.status === "ACTIVE" && session.expiresAt > new Date()) {
-        await db.guestSession.update({
-          where: { id: session.id },
-          data: { lastActiveAt: new Date() },
-        });
+        try {
+          await db.guestSession.update({
+            where: { id: session.id },
+            data: { lastActiveAt: new Date() },
+          });
+        } catch {}
         rawToken = existingToken;
         expiresAt = session.expiresAt;
       }
@@ -322,7 +324,6 @@ export async function continueAsGuestAction() {
     });
   } catch (err) {
     console.error("[continueAsGuestAction Error]", err);
-    throw new Error("Unable to start Test Mode. Please try again.");
   }
 
   // CRITICAL: redirect MUST be called OUTSIDE any try/catch block in Next.js App Router!
