@@ -1,0 +1,1179 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  name               String?
+  email              String?             @unique
+  emailVerified      DateTime?
+  image              String?
+  password           String?
+  role               String              @default("USER") // "USER" | "SUPPORT" | "MODERATOR" | "ADMIN" | "SUPER_ADMIN"
+  accountStatus      String              @default("active") // "active" | "suspended"
+  suspendedAt        DateTime?
+  suspendedBy        String?
+  suspensionReason   String?
+  generationDisabled Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  preference     UserPreference?
+  projects       Project[]
+  generations    Generation[]
+  assets         Asset[]
+  folders        AssetFolder[]
+  subscription   Subscription?
+  creditWallet   CreditWallet?
+  auditLogs      AuditLog[]          @relation("AdminUser")
+  favoriteModels UserFavoriteModel[]
+  favoriteVoices UserFavoriteVoice[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expires   DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([email, token])
+}
+
+model UserPreference {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  creatorType         String   @default("")
+  aspectRatio         String   @default("16:9")
+  recentModelIds      String   @default("[]") // JSON string array of recently selected model IDs
+  onboardingCompleted Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AIProvider {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique // e.g. "vanta-mock", "fal"
+  enabled   Boolean   @default(true)
+  status    String    @default("ONLINE") // "ONLINE" | "DEGRADED" | "OFFLINE"
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  models AIModel[]
+}
+
+model AIModel {
+  id                           String              @id @default(cuid())
+  providerId                   String?
+  providerModelId              String?             // e.g. "fal-ai/flux/schnell", "fal-ai/luma-dream-machine"
+  type                         String              @default("VIDEO") // "VIDEO" | "IMAGE" | "AUDIO" | "AVATAR"
+  name                         String
+  slug                         String              @unique // e.g. "vanta-motion-fast", "fal-flux-schnell"
+  description                  String
+  creditCost                   Int                 @default(8)
+  providerEstimatedCost        Float               @default(0.05) // USD cost per gen
+  enabled                      Boolean             @default(true)
+  isDefault                    Boolean             @default(false)
+  isNew                        Boolean             @default(false)
+  isPopular                    Boolean             @default(false)
+  isFeatured                   Boolean             @default(false)
+  requiredPlan                 String              @default("FREE") // "FREE" | "CREATOR" | "PRO" | "ULTRA"
+  priority                     Int                 @default(0)
+  sortOrder                    Int                 @default(0)
+  speedTier                    String              @default("Balanced") // "Fast" | "Balanced" | "Quality"
+  supportedModes               String              @default("[]") // JSON string array
+  supportedDurations           String              @default("[]") // JSON string array
+  supportedResolutions         String              @default("[]") // JSON string array
+  supportedAspectRatios        String              @default("[]") // JSON string array
+  supportsAudio                Boolean             @default(false)
+  supportsImageReference       Boolean             @default(true)
+  supportsVideoReference       Boolean             @default(false)
+  supportsStartEndFrame        Boolean             @default(false)
+  supportsMotionControl        Boolean             @default(false)
+  supportsInpainting           Boolean             @default(false)
+  supportsOutpainting          Boolean             @default(false)
+  supportsBackgroundRemoval    Boolean             @default(false)
+  supportsBackgroundReplacement Boolean            @default(false)
+  supportsUpscale              Boolean             @default(false)
+  supportsTTS                  Boolean             @default(false)
+  supportsMusic                Boolean             @default(false)
+  supportsSFX                  Boolean             @default(false)
+  supportsVoiceover            Boolean             @default(false)
+  supportsAudioEnhancement     Boolean             @default(false)
+  supportsAvatar               Boolean             @default(false)
+  supportsLipSync              Boolean             @default(false)
+  supportsHeadMotion           Boolean             @default(false)
+  supportsExpressionControl   Boolean             @default(false)
+  pricingRules                 String?             // JSON string object
+  createdAt                    DateTime            @default(now())
+  updatedAt                    DateTime            @updatedAt
+
+  provider      AIProvider?         @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  generations   Generation[]
+  pricings      ModelPricing[]
+  favoriteUsers UserFavoriteModel[]
+}
+
+model UserFavoriteModel {
+  id        String   @id @default(cuid())
+  userId    String
+  modelId   String
+  createdAt DateTime @default(now())
+
+  user  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  model AIModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, modelId])
+}
+
+model UserFavoriteVoice {
+  id        String   @id @default(cuid())
+  userId    String
+  voiceId   String
+  name      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, voiceId])
+}
+
+model ModelPricing {
+  id                    String   @id @default(cuid())
+  modelId               String
+  mode                  String   @default("text-to-video")
+  duration              String   @default("5s")
+  resolution            String   @default("1080p")
+  audio                 Boolean  @default(false)
+  customerCreditCost    Int      @default(8)
+  providerEstimatedCost Float    @default(0.05)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  model AIModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+}
+
+model SubscriptionPlan {
+  id                        String   @id @default(cuid())
+  key                       String   @unique // "FREE" | "CREATOR" | "PRO" | "ULTRA"
+  name                      String
+  description               String
+  monthlyPrice              Int      // USD per month
+  annualPrice               Int      // USD per year
+  monthlyCredits            Int
+  maxConcurrentGenerations  Int      @default(1)
+  maxResolution             String   @default("1080p")
+  storageLimit              String   @default("10GB")
+  generationPriority        String   @default("Standard")
+  commercialUsage           Boolean  @default(true)
+  stripePriceIdMonthly      String?
+  stripePriceIdAnnual       String?
+  features                  String   @default("[]") // JSON string array
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  planId                 String
+  stripeCustomerId       String?
+  stripeSubscriptionId   String?
+  stripePriceId          String?
+  status                 String   @default("active") // "active" | "past_due" | "canceled" | "unpaid"
+  currentPeriodStart     DateTime @default(now())
+  currentPeriodEnd       DateTime
+  cancelAtPeriodEnd      Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan SubscriptionPlan @relation(fields: [planId], references: [id])
+}
+
+model Project {
+  id             String   @id @default(cuid())
+  userId         String
+  workspaceId    String?  // Nullable for personal projects
+  visibility     String   @default("PERSONAL") // "PERSONAL" | "WORKSPACE" | "RESTRICTED"
+  createdBy      String?
+  revisionNumber Int      @default(1)
+  name           String
+  description    String?
+  thumbnailUrl   String?
+  aspectRatio    String   @default("16:9")
+  scriptText     String?  // Full raw script
+  creditBudget   Int?
+  creditSpent    Int      @default(0)
+  status         String   @default("active")
+  sceneCount     Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenes   Scene[]
+  elements ProjectElement[]
+  exports  FilmExport[]
+}
+
+model Scene {
+  id          String   @id @default(cuid())
+  projectId   String
+  title       String
+  description String?
+  locationId  String?
+  timeOfDay   String?  @default("Day") // Day, Night, Sunset, Sunrise
+  notes       String?
+  status      String   @default("DRAFT") // DRAFT, IN_PROGRESS, COMPLETED
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shots   Shot[]
+}
+
+model Shot {
+  id               String   @id @default(cuid())
+  sceneId          String
+  shotNumber       String
+  prompt           String
+  shotSize         String?  @default("Medium Shot") // Extreme Wide, Wide, Full, Medium, Close-Up, Extreme Close-Up, POV
+  cameraAngle      String?  @default("Eye Level") // Eye Level, Low Angle, High Angle, Dutch Angle
+  cameraMovement   String?  @default("Static") // Static, Pan Left, Zoom In, Dolly, Orbit, Tracking
+  lens             String?  @default("35mm") // 18mm, 35mm, 50mm, 85mm, Anamorphic
+  duration         String   @default("00:04")
+  status           String   @default("IDLE") // IDLE, QUEUED, GENERATING, COMPLETED, FAILED
+  storyboardUrl    String?
+  dialogueText     String?
+  selectedTakeId   String?
+  generationId     String?
+  assetId          String?
+  videoUrl         String?
+  order            Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  scene Scene  @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  takes Take[]
+}
+
+model Take {
+  id           String   @id @default(cuid())
+  shotId       String
+  takeNumber   Int
+  generationId String?
+  assetId      String?
+  videoUrl     String
+  thumbnailUrl String?
+  prompt       String
+  modelId      String
+  creditCost   Int      @default(8)
+  createdAt    DateTime @default(now())
+
+  shot Shot @relation(fields: [shotId], references: [id], onDelete: Cascade)
+}
+
+model FilmExport {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  status    String   @default("QUEUED") // QUEUED, PROCESSING, COMPLETED, FAILED
+  progress  Int      @default(0)
+  videoUrl  String?
+  assetId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ProjectElement {
+  id               String   @id @default(cuid())
+  projectId        String
+  name             String
+  type             String   // CHARACTER | LOCATION | PROP | STYLE | WARDROBE
+  description      String?
+  referenceAssetId String?
+  prompt           String?
+  metadata         String?  // JSON string
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Generation {
+  id                 String    @id @default(cuid())
+  userId             String?
+  guestSessionId     String?
+  modelId            String
+  mediaType          String    @default("VIDEO") // "VIDEO" | "IMAGE" | "AUDIO"
+  mode               String    @default("text-to-video") // "text-to-video" | "talking-avatar" | "lip-sync"
+  prompt             String
+  negativePrompt     String?
+  status             String    @default("QUEUED") // QUEUED, SUBMITTED, GENERATING, PROCESSING, COMPLETED, FAILED, CANCELLED
+  progress           Int       @default(0) // 0 - 100
+  resolution         String    @default("1080p")
+  duration           String    @default("5s")
+  aspectRatio        String    @default("16:9")
+  fps                Int       @default(24)
+  seed               String?
+  audio              Boolean   @default(false)
+  creditCost         Int       @default(8)
+  providerJobId      String?
+  errorMessage       String?
+  errorCategory      String?   // "PROVIDER_UNAVAILABLE" | "PROVIDER_RATE_LIMIT" | "INVALID_PROVIDER_INPUT" | "PROVIDER_MODERATION" | "PROVIDER_TIMEOUT" | "PROVIDER_FAILED" | "STORAGE_FAILED" | "UNKNOWN"
+  videoUrl           String?
+  imageUrl           String?   // Generated image output URL
+  audioUrl           String?   // Generated audio output URL
+  voiceId            String?   // TTS Voice ID
+  language           String?   // TTS Language
+  sourceImageAssetId String?   // Source portrait image for avatar
+  sourceVideoAssetId String?   // Source video for lip sync
+  audioAssetId       String?   // Source audio asset for lip sync/avatar
+  consentConfirmed   Boolean   @default(false)
+  thumbnailUrl       String?
+  referenceAssetIds  String?   // JSON string array
+  maskUrl            String?   // Mask image for inpainting
+  outputCount        Int       @default(1)
+  isFavorite         Boolean   @default(false)
+  moderationStatus   String    @default("APPROVED") // "PENDING" | "APPROVED" | "REJECTED" | "RESTRICTED"
+  moderationReason   String?
+  queuedAt           DateTime  @default(now())
+  submittedAt        DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestSession GuestSession? @relation(fields: [guestSessionId], references: [id], onDelete: Cascade)
+  model        AIModel       @relation(fields: [modelId], references: [id])
+  assets       Asset[]
+  jobs         GenerationJob[]
+}
+
+model GenerationJob {
+  id           String     @id @default(cuid())
+  generationId String
+  attempts     Int        @default(0)
+  maxAttempts  Int        @default(3)
+  lastError    String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  generation Generation @relation(fields: [generationId], references: [id], onDelete: Cascade)
+}
+
+model AssetFolder {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  color     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assets Asset[]
+}
+
+model Asset {
+  id           String    @id @default(cuid())
+  userId       String?
+  guestSessionId String?
+  workspaceId  String?   // Nullable for personal assets
+  visibility   String    @default("PERSONAL") // "PERSONAL" | "WORKSPACE" | "RESTRICTED"
+  createdBy    String?
+  type         String    // "VIDEO" | "IMAGE" | "AUDIO" | "UPLOAD" | "CHARACTER_REFERENCE" | "LOCATION_REFERENCE" | "STYLE_REFERENCE"
+  name         String
+  storageKey   String?
+  url          String
+  thumbnailUrl String?
+  mimeType     String?
+  sizeBytes    Int       @default(0)
+  width        Int?
+  height       Int?
+  resolution   String?
+  duration     String?
+  generationId String?
+  projectId    String?
+  folderId     String?
+  metadata     String?   // JSON string
+  isFavorite   Boolean   @default(false)
+  isRestricted Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime? // Soft deletion for Trash
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestSession GuestSession? @relation(fields: [guestSessionId], references: [id], onDelete: Cascade)
+  generation   Generation?   @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  folder       AssetFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+}
+
+model CreditWallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  balance   Int      @default(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions CreditTransaction[]
+}
+
+model CreditTransaction {
+  id                    String   @id @default(cuid())
+  walletId              String
+  amount                Int
+  type                  String   // "SIGNUP_GRANT" | "SUBSCRIPTION_GRANT" | "PURCHASE" | "GENERATION_RESERVE" | "GENERATION_CHARGE" | "GENERATION_REFUND" | "ADMIN_ADJUSTMENT" | "PROMOTIONAL_GRANT"
+  description           String
+  generationId          String?  // Reference generation ID for audit
+  adminUserId           String?  // Admin who performed adjustment
+  stripePaymentIntentId String?  @unique // Idempotency protection for Stripe payments
+  createdAt             DateTime @default(now())
+
+  wallet CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  adminUserId String
+  action      String   // e.g. "CREDIT_ADJUSTMENT", "ROLE_CHANGE", "USER_SUSPENSION", "MODEL_PRICING_CHANGE", "MODEL_TOGGLE"
+  targetType  String   // e.g. "User", "AIModel", "Generation", "FeatureFlag"
+  targetId    String?
+  beforeData  String?  // JSON string
+  afterData   String?  // JSON string
+  reason      String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  adminUser User @relation("AdminUser", fields: [adminUserId], references: [id], onDelete: Cascade)
+}
+
+model PromoCode {
+  id             String    @id @default(cuid())
+  code           String    @unique
+  creditAmount   Int
+  maxRedemptions Int       @default(100)
+  redemptions    Int       @default(0)
+  expiresAt      DateTime?
+  enabled        Boolean   @default(true)
+  newUsersOnly   Boolean   @default(false)
+  planRestriction String?
+  perUserLimit   Int       @default(1)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "motion_control", "video_to_video", "maintenance_mode"
+  name        String
+  description String
+  enabled     Boolean  @default(true)
+  targetPlans String?  // JSON string array
+  targetUsers String?  // JSON string array
+  percentage  Int?     // 0 - 100 percentage rollout
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   // JSON string or value
+  updatedAt DateTime @updatedAt
+}
+
+model DirectorRun {
+  id                 String          @id @default(cuid())
+  userId             String
+  projectId          String?
+  status             String          @default("DRAFT") // DRAFT, PLANNING, AWAITING_APPROVAL, APPROVED, EXECUTING, PAUSED, NEEDS_INPUT, NEEDS_APPROVAL, COMPLETED, PARTIALLY_COMPLETED, FAILED, CANCELLED
+  originalPrompt     String
+  creativeBrief      String?         // JSON string (CreativeBrief)
+  planJson           String?         // JSON string (DirectorPlan)
+  automationLevel    String          @default("PLAN_AND_GENERATE") // "PLAN_ONLY" | "PLAN_AND_GENERATE" | "FULLY_PRODUCE"
+  qualityPreference  String          @default("BALANCED") // "ECONOMY" | "BALANCED" | "PREMIUM"
+  budgetPreference   String          @default("ASK") // "USE_AVAILABLE" | "MAX_CREDITS" | "ASK"
+  creditBudget       Int             @default(500)
+  estimatedCredits   Int             @default(0)
+  actualCredits      Int             @default(0)
+  currentStage       String          @default("UNDERSTANDING_REQUEST")
+  progress           Int             @default(0)
+  errorMessage       String?
+  targetDestination  String          @default("GENERIC") // "YOUTUBE" | "TIKTOK" | "REELS" | "CINEMA" | "ADS" | "GENERIC"
+  template           String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  startedAt          DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+
+  tasks  DirectorTask[]
+  events DirectorEvent[]
+}
+
+model DirectorTask {
+  id               String       @id @default(cuid())
+  directorRunId    String
+  parentTaskId     String?
+  type             String       // "CREATE_PROJECT" | "WRITE_SCRIPT" | "CREATE_SCENE" | "CREATE_SHOT" | "GENERATE_REFERENCE" | "GENERATE_STORYBOARD" | "GENERATE_VIDEO" | "GENERATE_VOICE" | "GENERATE_MUSIC" | "GENERATE_SFX" | "LIP_SYNC" | "ASSEMBLE_TIMELINE" | "EXPORT_FILM"
+  status           String       @default("PENDING") // PENDING, BLOCKED, READY, RUNNING, AWAITING_APPROVAL, COMPLETED, FAILED, SKIPPED, CANCELLED
+  dependencies     String       @default("[]") // JSON string array of task IDs
+  input            String       @default("{}") // JSON string
+  output           String?      // JSON string
+  estimatedCredits Int          @default(0)
+  actualCredits    Int          @default(0)
+  attempts         Int          @default(0)
+  maxAttempts      Int          @default(3)
+  error            String?
+  createdAt        DateTime     @default(now())
+  startedAt        DateTime?
+  completedAt      DateTime?
+
+  run DirectorRun @relation(fields: [directorRunId], references: [id], onDelete: Cascade)
+}
+
+model DirectorEvent {
+  id            String      @id @default(cuid())
+  directorRunId String
+  stage         String
+  type          String      // "INFO" | "SUCCESS" | "WARNING" | "ERROR" | "CHECKPOINT"
+  message       String
+  data          String?     // JSON string
+  createdAt     DateTime    @default(now())
+
+  run DirectorRun @relation(fields: [directorRunId], references: [id], onDelete: Cascade)
+}
+
+model EditorProjectState {
+  id             String   @id @default(cuid())
+  projectId      String   @unique
+  timelineJson   String   // JSON string of EditorTimelineState
+  fps            Int      @default(24)
+  aspectRatio    String   @default("16:9")
+  canvasWidth    Int      @default(1920)
+  canvasHeight   Int      @default(1080)
+  previewQuality String   @default("Auto") // "Auto" | "360p" | "720p" | "Full"
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model EditorVersion {
+  id            String   @id @default(cuid())
+  projectId     String
+  name          String   // e.g. "v1", "v2", "Social Cut 9:16"
+  timelineState String   // JSON string
+  createdBy     String
+  createdAt     DateTime @default(now())
+}
+
+model TimelineMarker {
+  id        String   @id @default(cuid())
+  projectId String
+  time      Float    // Seconds
+  label     String
+  type      String   @default("GENERAL") // "GENERAL" | "BEAT" | "SCENE" | "NOTE" | "REVIEW"
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+model ShortsProject {
+  id                   String   @id @default(cuid())
+  userId               String
+  sourceAssetId        String?
+  name                 String
+  status               String   @default("PREPARING") // UPLOADING, PREPARING, TRANSCRIBING, ANALYZING, HIGHLIGHTS_READY, GENERATING_CLIPS, READY, FAILED
+  sourceDuration       Float    @default(0)
+  transcriptJson       String?  // JSON string (Transcript segments)
+  targetPlatform       String   @default("GENERIC_9_16") // TIKTOK, REELS, SHORTS, GENERIC_9_16
+  targetAspectRatio    String   @default("9:16")
+  clipLengthPreference String   @default("30-45s") // 15-30s, 30-45s, 45-60s, Auto
+  captionStyleId       String   @default("BOLD_SOCIAL")
+  hookStyle            String   @default("CURIOSITY")
+  brandingPresetId     String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  highlights HighlightCandidate[]
+  clips      ShortClip[]
+}
+
+model HighlightCandidate {
+  id              String   @id @default(cuid())
+  shortsProjectId String
+  startTime       Float
+  endTime         Float
+  title           String
+  summary         String
+  suggestedHook   String
+  score           Int      @default(85) // VANTA Highlight Score 0-100
+  reasonSummary   String
+  category        String   @default("INSIGHT") // INSIGHT, HUMOR, EMOTION, STORY, ACTION
+  status          String   @default("SUGGESTED") // SUGGESTED, SELECTED, DISMISSED
+  createdAt       DateTime @default(now())
+
+  project ShortsProject @relation(fields: [shortsProjectId], references: [id], onDelete: Cascade)
+  clips   ShortClip[]
+}
+
+model ShortClip {
+  id                   String   @id @default(cuid())
+  shortsProjectId      String
+  highlightCandidateId String?
+  name                 String
+  sourceStart          Float
+  sourceEnd            Float
+  duration             Float
+  status               String   @default("READY") // READY, PROCESSING, EXPORTED, FAILED
+  hookText             String?
+  templateId           String   @default("TALKING_HEAD")
+  reframeMode          String   @default("AUTO_REFRAME") // CENTER_CROP, AUTO_REFRAME, SPLIT_LAYOUT, BLURRED_BACKGROUND
+  cropKeyframes        String?  // JSON string
+  timelineStateId      String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  project   ShortsProject       @relation(fields: [shortsProjectId], references: [id], onDelete: Cascade)
+  candidate HighlightCandidate? @relation(fields: [highlightCandidateId], references: [id], onDelete: SetNull)
+  exports   ShortExport[]
+}
+
+model ShortExport {
+  id          String    @id @default(cuid())
+  shortClipId String
+  platform    String    // TIKTOK, REELS, SHORTS, GENERIC
+  status      String    @default("QUEUED") // QUEUED, RENDERING, UPLOADING, COMPLETED, FAILED
+  assetId     String?
+  resolution  String    @default("1080x1920")
+  aspectRatio String    @default("9:16")
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  clip ShortClip @relation(fields: [shortClipId], references: [id], onDelete: Cascade)
+}
+
+model ShortsBrandPreset {
+  id             String   @id @default(cuid())
+  userId         String
+  name           String
+  logoAssetId    String?
+  primaryColor   String   @default("#c8ff00")
+  secondaryColor String   @default("#ffffff")
+  fontChoice     String   @default("Inter")
+  captionPreset  String   @default("BOLD_SOCIAL")
+  watermark      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model ApiKey {
+  id            String    @id @default(cuid())
+  userId        String
+  name          String
+  prefix        String    // e.g. "vanta_live_ab12"
+  secretHash    String    // SHA-256 hash of plaintext secret
+  lastFour      String    // e.g. "89ef"
+  status        String    @default("ACTIVE") // ACTIVE, ROTATED, REVOKED, EXPIRED
+  permissions   String    // Comma-separated scopes: e.g. "models:read,generations:create,assets:read"
+  environment   String    @default("LIVE") // LIVE, TEST
+  rateLimitTier String    @default("STANDARD") // STANDARD, PRO, ENTERPRISE
+  lastUsedAt    DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+  revokedAt     DateTime?
+
+  requestLogs     ApiRequestLog[]
+  idempotencyKeys ApiIdempotencyKey[]
+}
+
+model ApiRequestLog {
+  id           String   @id @default(cuid())
+  apiKeyId     String?
+  userId       String
+  requestId    String   @unique
+  method       String
+  path         String
+  statusCode   Int
+  durationMs   Int
+  creditsUsed  Int      @default(0)
+  modelId      String?
+  generationId String?
+  errorCode    String?
+  createdAt    DateTime @default(now())
+
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+}
+
+model ApiIdempotencyKey {
+  id             String   @id @default(cuid())
+  apiKeyId       String?
+  userId         String
+  idempotencyKey String
+  requestHash    String
+  responseStatus Int
+  responseBody   String   // JSON string
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, idempotencyKey])
+}
+
+model DeveloperWebhookEndpoint {
+  id            String    @id @default(cuid())
+  userId        String
+  url           String
+  description   String?
+  status        String    @default("ACTIVE") // ACTIVE, DEGRADED, DISABLED
+  secretHash    String    // HMAC signing secret hash
+  events        String    // Comma-separated: e.g. "generation.completed,asset.created"
+  failureCount  Int       @default(0)
+  lastSuccessAt DateTime?
+  lastFailureAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  deliveries WebhookDelivery[]
+}
+
+model WebhookDelivery {
+  id           String    @id @default(cuid())
+  eventId      String
+  endpointId   String
+  eventType    String
+  payloadJson  String
+  status       String    @default("QUEUED") // QUEUED, DELIVERED, FAILED, RETRYING
+  attempt      Int       @default(1)
+  responseCode Int?
+  error        String?
+  durationMs   Int?
+  nextRetryAt  DateTime?
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  endpoint DeveloperWebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+}
+
+model McpClientConnection {
+  id            String    @id @default(cuid())
+  userId        String
+  clientType    String    // CHATGPT, CLAUDE_CODE, CLAUDE_API, OPENAI_API, IDE_AGENT, MOCK
+  clientName    String    // e.g. "Claude Code Desktop", "ChatGPT Custom App"
+  oauthClientId String?
+  tokenHash     String?   // SHA-256 hash of MCP bearer token if used
+  scopes        String    // Comma-separated: e.g. "models:read,generations:create,director:produce"
+  status        String    @default("ACTIVE") // ACTIVE, REVOKED, EXPIRED
+  lastUsedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  revokedAt     DateTime?
+
+  sessionLogs McpSessionLog[]
+}
+
+model McpSessionLog {
+  id           String   @id @default(cuid())
+  connectionId String?
+  userId       String
+  toolName     String
+  status       String   // SUCCESS, FAILED, CONFIRMATION_REQUIRED
+  durationMs   Int
+  creditsUsed  Int      @default(0)
+  generationId String?
+  errorCode    String?
+  createdAt    DateTime @default(now())
+
+  connection McpClientConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+}
+
+model Workspace {
+  id                       String   @id @default(cuid())
+  name                     String
+  slug                     String   @unique
+  ownerId                  String
+  logoAssetId              String?
+  description              String?
+  status                   String   @default("ACTIVE") // ACTIVE, SUSPENDED, DELETION_SCHEDULED
+  defaultProjectVisibility String   @default("WORKSPACE") // WORKSPACE, RESTRICTED, PRIVATE
+  creditPolicy             String   @default("WORKSPACE_CREDITS") // WORKSPACE_CREDITS, PERSONAL_CREDITS
+  seatLimit                Int      @default(10)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  members      WorkspaceMember[]
+  roles        WorkspaceRole[]
+  invitations  WorkspaceInvitation[]
+  activities   WorkspaceActivity[]
+  auditLogs    WorkspaceAuditLog[]
+  tasks        WorkspaceTask[]
+  brandKits    BrandKit[]
+  wallet       WorkspaceCreditWallet?
+}
+
+model WorkspaceMember {
+  id                   String    @id @default(cuid())
+  workspaceId          String
+  userId               String
+  roleId               String
+  status               String    @default("ACTIVE") // INVITED, ACTIVE, SUSPENDED, REMOVED
+  invitedBy            String?
+  lastActiveAt         DateTime?
+  joinedAt             DateTime  @default(now())
+  monthlyCreditLimit   Int?      // Optional member-level monthly credit limit
+  creditsUsedThisMonth Int       @default(0)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role      WorkspaceRole  @relation(fields: [roleId], references: [id])
+
+  @@unique([workspaceId, userId])
+}
+
+model WorkspaceRole {
+  id          String   @id @default(cuid())
+  workspaceId String?  // Null for global default roles
+  name        String   // e.g. OWNER, ADMIN, EDITOR, CREATOR, REVIEWER, VIEWER
+  key         String   // e.g. "owner", "admin", "editor", "creator", "reviewer", "viewer"
+  description String?
+  isCustom    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members     WorkspaceMember[]
+  permissions RolePermission[]
+}
+
+model RolePermission {
+  id            String   @id @default(cuid())
+  roleId        String
+  permissionKey String   // e.g. "projects:create", "generation:create", "credits:spend"
+
+  role WorkspaceRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionKey])
+}
+
+model WorkspaceInvitation {
+  id          String    @id @default(cuid())
+  workspaceId String
+  email       String
+  roleId      String
+  tokenHash   String    @unique
+  invitedBy   String
+  status      String    @default("PENDING") // PENDING, ACCEPTED, DECLINED, EXPIRED, REVOKED
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceActivity {
+  id          String   @id @default(cuid())
+  workspaceId String
+  actorUserId String
+  action      String   // e.g. "member.joined", "project.created", "review.approved"
+  targetType  String   // e.g. "Project", "Asset", "Comment", "Review"
+  targetId    String?
+  metadata    String?  // JSON string
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceAuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String
+  actorUserId String
+  action      String   // e.g. "MEMBER_ROLE_CHANGED", "OWNERSHIP_TRANSFERRED", "CREDIT_POLICY_CHANGED"
+  targetType  String
+  targetId    String?
+  metadata    String?  // JSON string
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model CommentThread {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  projectId      String?
+  targetType     String   // "PROJECT" | "SCENE" | "SHOT" | "ASSET" | "TIMELINE" | "DIRECTOR_RUN"
+  targetId       String
+  timestampMs    Int?     // Exact timestamp for video playback comments (e.g. 18420 for 00:18.420)
+  status         String   @default("OPEN") // OPEN, RESOLVED
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  comments Comment[]
+}
+
+model Comment {
+  id              String    @id @default(cuid())
+  threadId        String
+  workspaceId     String
+  projectId       String?
+  authorId        String
+  parentCommentId String?
+  body            String
+  status          String    @default("ACTIVE") // ACTIVE, EDITED, DELETED
+  editedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  thread   CommentThread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  mentions CommentMention[]
+}
+
+model CommentMention {
+  id        String   @id @default(cuid())
+  commentId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+}
+
+model ProjectReview {
+  id          String    @id @default(cuid())
+  workspaceId String
+  projectId   String
+  versionId   String?
+  requestedBy String
+  status      String    @default("IN_REVIEW") // DRAFT, IN_REVIEW, CHANGES_REQUESTED, APPROVED, CANCELLED
+  message     String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  assignees ProjectReviewAssignee[]
+}
+
+model ProjectReviewAssignee {
+  id          String    @id @default(cuid())
+  reviewId    String
+  userId      String
+  status      String    @default("PENDING") // PENDING, APPROVED, CHANGES_REQUESTED
+  respondedAt DateTime?
+  comment     String?
+
+  review ProjectReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+model SpendingApprovalRequest {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  requestedBy      String
+  operation        String    // e.g. "vanta_director_produce", "batch_video_generation"
+  estimatedCredits Int
+  projectId        String?
+  status           String    @default("PENDING") // PENDING, APPROVED, REJECTED, EXPIRED
+  approvedBy       String?
+  resolvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      String   @default("EDITOR") // EDITOR, REVIEWER, VIEWER
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, userId])
+}
+
+model WorkspaceTask {
+  id                 String    @id @default(cuid())
+  workspaceId        String
+  projectId          String?
+  assignedTo         String?
+  createdBy          String
+  title              String
+  description        String?
+  status             String    @default("TODO") // TODO, IN_PROGRESS, BLOCKED, DONE
+  dueDate            DateTime?
+  linkedResourceType String?
+  linkedResourceId   String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model ExternalReviewLink {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  projectId     String
+  versionId     String?
+  tokenHash     String    @unique
+  passcodeHash  String?
+  status        String    @default("ACTIVE") // ACTIVE, REVOKED, EXPIRED
+  allowComments Boolean   @default(true)
+  allowApproval Boolean   @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+model BrandKit {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  logoUrl          String?
+  primaryColor     String   @default("#c8ff00")
+  secondaryColor   String   @default("#09090b")
+  accentColor      String   @default("#18181b")
+  fontFamily       String   @default("Inter")
+  watermarkAssetId String?
+  metadataJson     String?  // JSON string
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceCreditWallet {
+  id          String   @id @default(cuid())
+  workspaceId String   @unique
+  balance     Int      @default(1000)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace    Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions WorkspaceCreditTransaction[]
+}
+
+model WorkspaceCreditTransaction {
+  id                String   @id @default(cuid())
+  walletId          String
+  initiatedByUserId String
+  amount            Int
+  type              String   // "SUBSCRIPTION_GRANT" | "PURCHASE" | "GENERATION_RESERVE" | "GENERATION_REFUND"
+  description       String
+  generationId      String?
+  createdAt         DateTime @default(now())
+
+  wallet WorkspaceCreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model SystemIncident {
+  id                 String    @id @default(cuid())
+  title              String
+  status             String    @default("INVESTIGATING") // INVESTIGATING, IDENTIFIED, MONITORING, RESOLVED
+  severity           String    @default("WARNING") // INFO, WARNING, HIGH, CRITICAL
+  affectedComponents String    // Comma-separated: e.g. "video_studio,mcp_server,api"
+  message            String
+  startedAt          DateTime  @default(now())
+  resolvedAt         DateTime?
+  updatedAt          DateTime  @updatedAt
+}
+
+model SupportTicket {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String?
+  category    String    // BILLING, GENERATION, ACCOUNT, CREDITS, API, MCP, WORKSPACE, BUG, OTHER
+  priority    String    @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  subject     String
+  message     String
+  status      String    @default("OPEN") // OPEN, IN_PROGRESS, WAITING_FOR_USER, RESOLVED, CLOSED
+  assignedTo  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  resolvedAt  DateTime?
+}
+
+model LaunchCheck {
+  id         String    @id @default(cuid())
+  key        String    @unique
+  category   String    // SECURITY, INFRASTRUCTURE, PAYMENTS, PROVIDERS, EMAIL, BACKUPS, RESTORE, MONITORING, LEGAL, SUPPORT, PERFORMANCE, ANALYTICS
+  status     String    @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, PASS, FAIL, BLOCKED, WAIVED
+  required   Boolean   @default(true)
+  owner      String?
+  notes      String?
+  verifiedAt DateTime?
+  verifiedBy String?
+}
+
+model SecurityAuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String   // LOGIN_FAILED, PASSWORD_RESET, API_KEY_CREATED, MCP_REVOKED, SUSPENSION, OWNERSHIP_TRANSFERRED
+  targetType  String
+  targetId    String?
+  metadata    String?  // JSON string
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+}
+
+model GuestSession {
+  id                String       @id @default(cuid())
+  publicId          String       @unique @default(cuid())
+  sessionTokenHash  String       @unique
+  testCreditBalance Int          @default(100)
+  status            String       @default("ACTIVE") // ACTIVE, EXPIRED, CONVERTED
+  convertedUserId   String?
+  createdAt         DateTime     @default(now())
+  lastActiveAt      DateTime     @default(now())
+  expiresAt         DateTime
+
+  generations       Generation[]
+  assets            Asset[]
+}
