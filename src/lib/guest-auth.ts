@@ -26,10 +26,12 @@ export async function getOrCreateGuestSession() {
     });
 
     if (session && session.status === "ACTIVE" && session.expiresAt > new Date()) {
-      await db.guestSession.update({
-        where: { id: session.id },
-        data: { lastActiveAt: new Date() },
-      });
+      try {
+        await db.guestSession.update({
+          where: { id: session.id },
+          data: { lastActiveAt: new Date() },
+        });
+      } catch {}
       return session;
     }
   }

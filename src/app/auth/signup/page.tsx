@@ -76,14 +76,16 @@ function SignUpForm() {
 
         // Launch Onboarding Wizard
         setShowOnboarding(true);
+      } else {
+        if (res.error === "DUPLICATE_EMAIL") {
+          setDuplicateEmailError(true);
+        } else {
+          showToast(res.message || "Failed to create account.", "error");
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to create account.";
-      if (msg.includes("DUPLICATE_EMAIL")) {
-        setDuplicateEmailError(true);
-      } else {
-        showToast(msg, "error");
-      }
+      showToast(msg, "error");
     } finally {
       setIsLoading(false);
     }

@@ -15,87 +15,118 @@ import {
 } from "@/lib/validations/auth";
 
 export async function signUpAction(formData: unknown) {
-  const validated = signUpSchema.safeParse(formData);
-  if (!validated.success) {
-    const firstIssue = validated.error.issues[0];
-    throw new Error(firstIssue?.message || "Invalid sign up details");
+  try {
+    const validated = signUpSchema.safeParse(formData);
+    if (!validated.success) {
+      const firstIssue = validated.error.issues[0];
+      return {
+        success: false,
+        error: "INVALID_FIELDS",
+        message: firstIssue?.message || "Invalid registration details.",
+      };
+    }
+
+    const { name, email, password } = validated.data;
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check if user already exists
+    const existingUser = await db.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (existingUser) {
+      return {
+        success: false,
+        error: "DUPLICATE_EMAIL",
+        message: "An account with this email already exists.",
+      };
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create User, CreditWallet, Subscription, and UserPreference in atomic transaction
+    const user = await db.$transaction(async (tx) => {
+      // Ensure default FREE plan exists inside transaction
+      let freePlan = await tx.subscriptionPlan.findUnique({ where: { key: "FREE" } });
+      if (!freePlan) {
+        freePlan = await tx.subscriptionPlan.create({
+          data: {
+            key: "FREE",
+            name: "Free Plan",
+            description: "Standard generation features for creators",
+            monthlyPrice: 0,
+            annualPrice: 0,
+            monthlyCredits: 100,
+            maxConcurrentGenerations: 1,
+            maxResolution: "1080p",
+            storageLimit: "10GB",
+            generationPriority: "Standard",
+            commercialUsage: true,
+            features: JSON.stringify(["100 Monthly Credits", "720p & 1080p Resolution", "1 Concurrent Render Job"]),
+          },
+        });
+      }
+
+      const newUser = await tx.user.create({
+        data: {
+          name,
+          email: normalizedEmail,
+          password: hashedPassword,
+        },
+      });
+
+      await tx.creditWallet.create({
+        data: {
+          userId: newUser.id,
+          balance: 100,
+        },
+      });
+
+      await tx.subscription.create({
+        data: {
+          userId: newUser.id,
+          planId: freePlan.id,
+          status: "active",
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      await tx.userPreference.create({
+        data: {
+          userId: newUser.id,
+          creatorType: "",
+          aspectRatio: "16:9",
+          onboardingCompleted: false,
+        },
+      });
+
+      return newUser;
+    });
+
+    // Check for active GuestSession and transfer Guest creations
+    try {
+      const cookieStore = await cookies();
+      const rawToken = cookieStore.get(GUEST_COOKIE_NAME)?.value;
+      if (rawToken) {
+        const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+        const guestSession = await db.guestSession.findUnique({ where: { sessionTokenHash: tokenHash } });
+        if (guestSession) {
+          const { convertGuestToUser } = await import("@/lib/guest-auth");
+          await convertGuestToUser(guestSession.id, user.id);
+        }
+      }
+    } catch {}
+
+    return { success: true, userId: user.id, email: user.email };
+  } catch (err: any) {
+    console.error("[signUpAction Server Exception]", err);
+    return {
+      success: false,
+      error: "SERVER_ERROR",
+      message: err.message || "An unexpected error occurred during account creation.",
+    };
   }
-
-  const { name, email, password } = validated.data;
-  const normalizedEmail = email.toLowerCase().trim();
-
-  // Check if user already exists
-  const existingUser = await db.user.findUnique({
-    where: { email: normalizedEmail },
-  });
-
-  if (existingUser) {
-    throw new Error("DUPLICATE_EMAIL: An account with this email already exists.");
-  }
-
-  // Hash password
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  // Ensure default FREE plan exists
-  let freePlan = await db.subscriptionPlan.findUnique({ where: { key: "FREE" } });
-  if (!freePlan) {
-    freePlan = await db.subscriptionPlan.create({
-      data: {
-        key: "FREE",
-        name: "Free Plan",
-        description: "Standard generation features for creators",
-        monthlyPrice: 0,
-        annualPrice: 0,
-        monthlyCredits: 100,
-        maxConcurrentGenerations: 1,
-        maxResolution: "1080p",
-        storageLimit: "10GB",
-        generationPriority: "Standard",
-        commercialUsage: true,
-        features: JSON.stringify(["100 Monthly Credits", "720p & 1080p Resolution", "1 Concurrent Render Job"]),
-      },
-    });
-  }
-
-  // Create User, CreditWallet, Subscription, and UserPreference in transaction
-  const user = await db.$transaction(async (tx) => {
-    const newUser = await tx.user.create({
-      data: {
-        name,
-        email: normalizedEmail,
-        password: hashedPassword,
-      },
-    });
-
-    await tx.creditWallet.create({
-      data: {
-        userId: newUser.id,
-        balance: 100,
-      },
-    });
-
-    await tx.subscription.create({
-      data: {
-        userId: newUser.id,
-        planId: freePlan.id,
-        status: "active",
-        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    });
-
-    await tx.userPreference.create({
-      data: {
-        userId: newUser.id,
-        creatorType: "",
-        aspectRatio: "16:9",
-        onboardingCompleted: false,
-      },
-    });
-
-    return newUser;
-  });
-
-  return { success: true, userId: user.id, email: user.email };
 }
 
 export async function requestPasswordResetAction(formData: unknown) {
