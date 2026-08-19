@@ -124,7 +124,7 @@ export async function signUpAction(formData: unknown) {
     return {
       success: false,
       error: "SERVER_ERROR",
-      message: err.message || "An unexpected error occurred during account creation.",
+      message: "Unable to create your account right now. Please try again.",
     };
   }
 }
