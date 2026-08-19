@@ -16,6 +16,7 @@ import {
 
 export async function signUpAction(formData: unknown) {
   try {
+    console.log("[REGISTER_MILESTONE] 1. START");
     const validated = signUpSchema.safeParse(formData);
     if (!validated.success) {
       const firstIssue = validated.error.issues[0];
@@ -28,6 +29,7 @@ export async function signUpAction(formData: unknown) {
 
     const { name, email, password } = validated.data;
     const normalizedEmail = email.toLowerCase().trim();
+    console.log("[REGISTER_MILESTONE] 2. VALIDATED", { email: normalizedEmail });
 
     // Check if user already exists
     const existingUser = await db.user.findUnique({
@@ -35,6 +37,7 @@ export async function signUpAction(formData: unknown) {
     });
 
     if (existingUser) {
+      console.log("[REGISTER_MILESTONE] 3. DUPLICATE_EMAIL_FOUND");
       return {
         success: false,
         error: "DUPLICATE_EMAIL",
@@ -42,32 +45,14 @@ export async function signUpAction(formData: unknown) {
       };
     }
 
+    console.log("[REGISTER_MILESTONE] 3. EMAIL_AVAILABLE");
+
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create User, CreditWallet, Subscription, and UserPreference in atomic transaction
+    // Create User, CreditWallet, Subscription, and UserPreference in transaction
     const user = await db.$transaction(async (tx) => {
-      // Ensure default FREE plan exists inside transaction
-      let freePlan = await tx.subscriptionPlan.findUnique({ where: { key: "FREE" } });
-      if (!freePlan) {
-        freePlan = await tx.subscriptionPlan.create({
-          data: {
-            key: "FREE",
-            name: "Free Plan",
-            description: "Standard generation features for creators",
-            monthlyPrice: 0,
-            annualPrice: 0,
-            monthlyCredits: 100,
-            maxConcurrentGenerations: 1,
-            maxResolution: "1080p",
-            storageLimit: "10GB",
-            generationPriority: "Standard",
-            commercialUsage: true,
-            features: JSON.stringify(["100 Monthly Credits", "720p & 1080p Resolution", "1 Concurrent Render Job"]),
-          },
-        });
-      }
-
+      console.log("[REGISTER_MILESTONE] 4. USER_CREATE_START");
       const newUser = await tx.user.create({
         data: {
           name,
@@ -75,31 +60,66 @@ export async function signUpAction(formData: unknown) {
           password: hashedPassword,
         },
       });
+      console.log("[REGISTER_MILESTONE] 5. USER_CREATED", { userId: newUser.id });
 
-      await tx.creditWallet.create({
-        data: {
-          userId: newUser.id,
-          balance: 100,
-        },
-      });
+      try {
+        await tx.creditWallet.create({
+          data: {
+            userId: newUser.id,
+            balance: 100,
+          },
+        });
+        console.log("[REGISTER_MILESTONE] 6. WALLET_CREATED");
+      } catch (walletErr: any) {
+        console.error("[REGISTER_MILESTONE_WARN] CreditWallet create warning:", walletErr?.message || walletErr);
+      }
 
-      await tx.subscription.create({
-        data: {
-          userId: newUser.id,
-          planId: freePlan.id,
-          status: "active",
-          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        },
-      });
+      try {
+        let freePlan = await tx.subscriptionPlan.findUnique({ where: { key: "FREE" } });
+        if (!freePlan) {
+          freePlan = await tx.subscriptionPlan.create({
+            data: {
+              key: "FREE",
+              name: "Free Plan",
+              description: "Standard generation features for creators",
+              monthlyPrice: 0,
+              annualPrice: 0,
+              monthlyCredits: 100,
+              maxConcurrentGenerations: 1,
+              maxResolution: "1080p",
+              storageLimit: "10GB",
+              generationPriority: "Standard",
+              commercialUsage: true,
+              features: JSON.stringify(["100 Monthly Credits", "720p & 1080p Resolution", "1 Concurrent Render Job"]),
+            },
+          });
+        }
+        await tx.subscription.create({
+          data: {
+            userId: newUser.id,
+            planId: freePlan.id,
+            status: "active",
+            currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        });
+        console.log("[REGISTER_MILESTONE] 7. SUBSCRIPTION_CREATED");
+      } catch (subErr: any) {
+        console.error("[REGISTER_MILESTONE_WARN] Subscription create warning:", subErr?.message || subErr);
+      }
 
-      await tx.userPreference.create({
-        data: {
-          userId: newUser.id,
-          creatorType: "",
-          aspectRatio: "16:9",
-          onboardingCompleted: false,
-        },
-      });
+      try {
+        await tx.userPreference.create({
+          data: {
+            userId: newUser.id,
+            creatorType: "",
+            aspectRatio: "16:9",
+            onboardingCompleted: false,
+          },
+        });
+        console.log("[REGISTER_MILESTONE] 8. PREFERENCE_CREATED");
+      } catch (prefErr: any) {
+        console.error("[REGISTER_MILESTONE_WARN] UserPreference create warning:", prefErr?.message || prefErr);
+      }
 
       return newUser;
     });
@@ -114,13 +134,24 @@ export async function signUpAction(formData: unknown) {
         if (guestSession) {
           const { convertGuestToUser } = await import("@/lib/guest-auth");
           await convertGuestToUser(guestSession.id, user.id);
+          console.log("[REGISTER_MILESTONE] 9. GUEST_CONVERTED", { guestSessionId: guestSession.id });
         }
       }
-    } catch {}
+    } catch (guestErr: any) {
+      console.error("[REGISTER_MILESTONE_WARN] Guest conversion warning:", guestErr?.message || guestErr);
+    }
 
+    console.log("[REGISTER_MILESTONE] 10. REGISTER_SUCCESS", { userId: user.id });
     return { success: true, userId: user.id, email: user.email };
   } catch (err: any) {
-    console.error("[signUpAction Server Exception]", err);
+    console.error("[signUpAction Server Exception]", err?.message || err);
+    if (err?.message?.includes("P2002") || err?.message?.includes("Unique constraint")) {
+      return {
+        success: false,
+        error: "DUPLICATE_EMAIL",
+        message: "An account with this email already exists.",
+      };
+    }
     return {
       success: false,
       error: "SERVER_ERROR",
