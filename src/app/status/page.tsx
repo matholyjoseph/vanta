@@ -4,16 +4,26 @@ import { db } from "@/lib/db";
 import { Activity, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "System Operational Status — VANTA AI",
   description: "Real-time system health and service availability for VANTA AI.",
 };
 
 export default async function PublicStatusPage() {
-  const incidents = await db.systemIncident.findMany({
-    take: 5,
-    orderBy: { startedAt: "desc" },
-  });
+  let incidents: any[] = [];
+  let isDatabaseAvailable = true;
+
+  try {
+    incidents = await db.systemIncident.findMany({
+      take: 5,
+      orderBy: { startedAt: "desc" },
+    });
+  } catch (err: any) {
+    console.error("[Status Page DB Read Error]", err?.message || err);
+    isDatabaseAvailable = false;
+  }
 
   const services = [
     { name: "Web Application & Dashboard", status: "OPERATIONAL" },
