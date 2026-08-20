@@ -18,25 +18,30 @@ export async function createWorkspaceAction(data: { name: string; description?: 
 }
 
 export async function getUserWorkspacesAction() {
-  const user = await getAuthenticatedOrGuestUser();
-  const members = await db.workspaceMember.findMany({
-    where: { userId: user.id, status: "ACTIVE" },
-    include: {
-      workspace: {
-        include: {
-          members: { include: { role: true } },
-          wallet: true,
+  try {
+    const user = await getAuthenticatedOrGuestUser();
+    const members = await db.workspaceMember.findMany({
+      where: { userId: user.id, status: "ACTIVE" },
+      include: {
+        workspace: {
+          include: {
+            members: { include: { role: true } },
+            wallet: true,
+          },
         },
+        role: true,
       },
-      role: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+      orderBy: { createdAt: "desc" },
+    });
 
-  return members.map((m) => ({
-    ...m.workspace,
-    currentUserRole: m.role,
-  }));
+    return members.map((m) => ({
+      ...m.workspace,
+      currentUserRole: m.role,
+    }));
+  } catch (err) {
+    console.warn("[getUserWorkspacesAction] DB read fallback:", err);
+    return [];
+  }
 }
 
 export async function inviteWorkspaceMemberAction(workspaceId: string, data: { email: string; roleId: string }) {
