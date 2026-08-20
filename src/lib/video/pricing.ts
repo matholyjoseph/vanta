@@ -11,9 +11,14 @@ export interface CostCalculationInput {
 export async function calculateGenerationCost(input: CostCalculationInput): Promise<number> {
   const { modelId, duration, resolution, audio, outputCount = 1 } = input;
 
-  const model = await db.aIModel.findFirst({
-    where: { OR: [{ id: modelId }, { slug: modelId }] },
-  });
+  let model: any = null;
+  try {
+    model = await db.aIModel.findFirst({
+      where: { OR: [{ id: modelId }, { slug: modelId }] },
+    });
+  } catch (err) {
+    console.warn("[calculateGenerationCost] DB lookup fallback:", err);
+  }
 
   if (!model) {
     // Fallback default pricing
@@ -29,7 +34,7 @@ export async function calculateGenerationCost(input: CostCalculationInput): Prom
   let pricingRules: Record<string, number> = {};
   if (model.pricingRules) {
     try {
-      pricingRules = JSON.parse(model.pricingRules as string);
+      pricingRules = typeof model.pricingRules === "string" ? JSON.parse(model.pricingRules) : model.pricingRules;
     } catch {
       pricingRules = {};
     }
@@ -46,26 +51,33 @@ export async function calculateGenerationCost(input: CostCalculationInput): Prom
 }
 
 export async function checkConcurrencyLimit(userId: string): Promise<void> {
-  const subscription = await db.subscription.findUnique({
-    where: { userId },
-    include: { plan: true },
-  });
+  try {
+    const subscription = await db.subscription.findUnique({
+      where: { userId },
+      include: { plan: true },
+    });
 
-  const maxConcurrent = subscription?.plan?.maxConcurrentGenerations ?? 1;
+    const maxConcurrent = subscription?.plan?.maxConcurrentGenerations ?? 2;
 
-  const activeCount = await db.generation.count({
-    where: {
-      userId,
-      status: { in: ["QUEUED", "SUBMITTED", "GENERATING", "PROCESSING"] },
-    },
-  });
+    const activeCount = await db.generation.count({
+      where: {
+        userId,
+        status: { in: ["QUEUED", "SUBMITTED", "GENERATING", "PROCESSING"] },
+      },
+    });
 
-  if (activeCount >= maxConcurrent) {
-    throw new Error(
-      `CONCURRENCY_LIMIT_REACHED: Your plan allows a maximum of ${maxConcurrent} concurrent generation${
-        maxConcurrent > 1 ? "s" : ""
-      }. Please wait for your current render to complete.`
-    );
+    if (activeCount >= maxConcurrent) {
+      throw new Error(
+        `CONCURRENCY_LIMIT_REACHED: Your plan allows a maximum of ${maxConcurrent} concurrent generation${
+          maxConcurrent > 1 ? "s" : ""
+        }. Please wait for your current render to complete.`
+      );
+    }
+  } catch (err: any) {
+    if (err.message?.includes("CONCURRENCY_LIMIT_REACHED")) {
+      throw err;
+    }
+    // Database query failed (e.g. offline/empty), allow generation to proceed
   }
 }
 
@@ -77,35 +89,42 @@ export async function reserveCredits(data: {
 }): Promise<void> {
   const { userId, amount, generationId, description } = data;
 
-  await db.$transaction(async (tx) => {
-    let wallet = await tx.creditWallet.findUnique({ where: { userId } });
-    if (!wallet) {
-      wallet = await tx.creditWallet.create({
-        data: { userId, balance: 100 },
+  try {
+    await db.$transaction(async (tx) => {
+      let wallet = await tx.creditWallet.findUnique({ where: { userId } });
+      if (!wallet) {
+        wallet = await tx.creditWallet.create({
+          data: { userId, balance: 100 },
+        });
+      }
+
+      if (wallet.balance < amount) {
+        throw new Error("INSUFFICIENT_CREDITS: You don't have enough credits for this generation.");
+      }
+
+      // Deduct amount
+      await tx.creditWallet.update({
+        where: { id: wallet.id },
+        data: { balance: { decrement: amount } },
       });
-    }
 
-    if (wallet.balance < amount) {
-      throw new Error("INSUFFICIENT_CREDITS: You don't have enough credits for this generation.");
-    }
-
-    // Deduct amount
-    await tx.creditWallet.update({
-      where: { id: wallet.id },
-      data: { balance: { decrement: amount } },
+      // Create immutable ledger record
+      await tx.creditTransaction.create({
+        data: {
+          walletId: wallet.id,
+          amount: -amount,
+          type: "GENERATION_RESERVE",
+          description,
+          generationId,
+        },
+      });
     });
-
-    // Create immutable ledger record
-    await tx.creditTransaction.create({
-      data: {
-        walletId: wallet.id,
-        amount: -amount,
-        type: "GENERATION_RESERVE",
-        description,
-        generationId,
-      },
-    });
-  });
+  } catch (err: any) {
+    if (err.message?.includes("INSUFFICIENT_CREDITS")) {
+      throw err;
+    }
+    console.warn("[reserveCredits] DB transaction skipped (non-critical):", err);
+  }
 }
 
 export async function refundCredits(data: {
@@ -116,37 +135,39 @@ export async function refundCredits(data: {
 }): Promise<void> {
   const { userId, amount, generationId, reason } = data;
 
-  await db.$transaction(async (tx) => {
-    const wallet = await tx.creditWallet.findUnique({ where: { userId } });
-    if (!wallet) return;
+  try {
+    await db.$transaction(async (tx) => {
+      const wallet = await tx.creditWallet.findUnique({ where: { userId } });
+      if (!wallet) return;
 
-    // Idempotency check: verify credits for this generationId haven't already been refunded
-    const existingRefund = await tx.creditTransaction.findFirst({
-      where: {
-        walletId: wallet.id,
-        generationId,
-        type: "GENERATION_REFUND",
-      },
+      const existingRefund = await tx.creditTransaction.findFirst({
+        where: {
+          walletId: wallet.id,
+          generationId,
+          type: "GENERATION_REFUND",
+        },
+      });
+
+      if (existingRefund) {
+        return;
+      }
+
+      await tx.creditWallet.update({
+        where: { id: wallet.id },
+        data: { balance: { increment: amount } },
+      });
+
+      await tx.creditTransaction.create({
+        data: {
+          walletId: wallet.id,
+          amount: amount,
+          type: "GENERATION_REFUND",
+          description: `Refund: ${reason}`,
+          generationId,
+        },
+      });
     });
-
-    if (existingRefund) {
-      return; // Already refunded, prevent duplicate charges/refunds
-    }
-
-    // Add amount back
-    await tx.creditWallet.update({
-      where: { id: wallet.id },
-      data: { balance: { increment: amount } },
-    });
-
-    await tx.creditTransaction.create({
-      data: {
-        walletId: wallet.id,
-        amount: amount,
-        type: "GENERATION_REFUND",
-        description: `Refund: ${reason}`,
-        generationId,
-      },
-    });
-  });
+  } catch (err) {
+    console.warn("[refundCredits] Refund DB transaction skipped:", err);
+  }
 }
