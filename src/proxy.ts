@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
+const GUEST_COOKIE_NAME = "vanta_guest_session";
+
 const PROTECTED_ROUTES = [
   "/dashboard",
   "/studio",
@@ -10,6 +12,11 @@ const PROTECTED_ROUTES = [
   "/account",
   "/billing",
   "/admin",
+  "/cinema",
+  "/editor",
+  "/director",
+  "/shorts",
+  "/workspaces",
 ];
 
 const AUTH_ROUTES = [
@@ -28,8 +35,13 @@ export async function proxy(req: NextRequest) {
     process.env.NEXTAUTH_SECRET ||
     "vanta-ai-fallback-secret-key-32-chars";
 
-  const token = await getToken({ req, secret });
-  const isAuthenticated = !!token;
+  let token = null;
+  try {
+    token = await getToken({ req, secret });
+  } catch {}
+
+  const hasGuestSession = Boolean(req.cookies.get(GUEST_COOKIE_NAME)?.value);
+  const isAuthenticated = Boolean(token) || hasGuestSession;
 
   const isProtectedRoute = PROTECTED_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
@@ -38,15 +50,22 @@ export async function proxy(req: NextRequest) {
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
 
-  // If attempting to access a protected route while logged out, redirect to /auth/login
+  // Admin routes strictly require full authenticated user account
+  if (pathname.startsWith("/admin") && !token) {
+    const loginUrl = new URL("/auth/login", req.url);
+    loginUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // If attempting to access a protected route while logged out (and no guest session), redirect to /auth/login
   if (isProtectedRoute && !isAuthenticated) {
     const loginUrl = new URL("/auth/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // If visiting auth page while logged in (and not in explicit onboarding), redirect to /dashboard
-  if (isAuthRoute && isAuthenticated && !searchParams.has("onboarding")) {
+  // If visiting auth page while logged in with full user account (and not in explicit onboarding), redirect to /dashboard
+  if (isAuthRoute && Boolean(token) && !searchParams.has("onboarding")) {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
@@ -62,6 +81,11 @@ export const config = {
     "/account/:path*",
     "/billing/:path*",
     "/admin/:path*",
+    "/cinema/:path*",
+    "/editor/:path*",
+    "/director/:path*",
+    "/shorts/:path*",
+    "/workspaces/:path*",
     "/auth/:path*",
   ],
 };
