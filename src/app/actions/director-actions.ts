@@ -64,22 +64,27 @@ export async function getDirectorRunDetailsAction(directorRunId: string) {
 }
 
 export async function getDirectorHistoryAction() {
-  const user = await getAuthenticatedOrGuestUser();
+  try {
+    const user = await getAuthenticatedOrGuestUser();
 
-  const runs = await db.directorRun.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    include: {
-      tasks: { select: { id: true, status: true } },
-    },
-    take: 20,
-  });
+    const runs = await db.directorRun.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        tasks: { select: { id: true, status: true } },
+      },
+      take: 20,
+    });
 
-  return runs.map((r) => ({
-    ...r,
-    creativeBrief: r.creativeBrief ? JSON.parse(r.creativeBrief) : null,
-    planJson: r.planJson ? JSON.parse(r.planJson) : null,
-  }));
+    return runs.map((r) => ({
+      ...r,
+      creativeBrief: r.creativeBrief ? JSON.parse(r.creativeBrief) : null,
+      planJson: r.planJson ? JSON.parse(r.planJson) : null,
+    }));
+  } catch (err) {
+    console.warn("[getDirectorHistoryAction] DB read fallback:", err);
+    return [];
+  }
 }
 
 export async function approveDirectorPlanAction(directorRunId: string) {

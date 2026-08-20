@@ -25,11 +25,16 @@ export async function createApiKeyAction(params: {
 }
 
 export async function getApiKeysAction() {
-  const user = await getAuthenticatedOrGuestUser();
-  return db.apiKey.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-  });
+  try {
+    const user = await getAuthenticatedOrGuestUser();
+    return await db.apiKey.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+    });
+  } catch (err) {
+    console.warn("[getApiKeysAction] DB read fallback:", err);
+    return [];
+  }
 }
 
 export async function revokeApiKeyAction(keyId: string) {
@@ -83,14 +88,19 @@ export async function createWebhookEndpointAction(params: {
 }
 
 export async function getWebhookEndpointsAction() {
-  const user = await getAuthenticatedOrGuestUser();
-  return db.developerWebhookEndpoint.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    include: {
-      deliveries: { orderBy: { createdAt: "desc" }, take: 10 },
-    },
-  });
+  try {
+    const user = await getAuthenticatedOrGuestUser();
+    return await db.developerWebhookEndpoint.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        deliveries: { orderBy: { createdAt: "desc" }, take: 10 },
+      },
+    });
+  } catch (err) {
+    console.warn("[getWebhookEndpointsAction] DB read fallback:", err);
+    return [];
+  }
 }
 
 export async function sendTestWebhookEventAction(endpointId: string) {
@@ -100,30 +110,47 @@ export async function sendTestWebhookEventAction(endpointId: string) {
 }
 
 export async function getApiRequestLogsAction() {
-  const user = await getAuthenticatedOrGuestUser();
-  return db.apiRequestLog.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: { apiKey: true },
-  });
+  try {
+    const user = await getAuthenticatedOrGuestUser();
+    return await db.apiRequestLog.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: { apiKey: true },
+    });
+  } catch (err) {
+    console.warn("[getApiRequestLogsAction] DB read fallback:", err);
+    return [];
+  }
 }
 
 export async function getDeveloperOverviewMetricsAction() {
-  const user = await getAuthenticatedOrGuestUser();
+  try {
+    const user = await getAuthenticatedOrGuestUser();
 
-  const totalKeys = await db.apiKey.count({ where: { userId: user.id, status: "ACTIVE" } });
-  const totalLogs = await db.apiRequestLog.count({ where: { userId: user.id } });
-  const failedLogs = await db.apiRequestLog.count({ where: { userId: user.id, statusCode: { gte: 400 } } });
+    const totalKeys = await db.apiKey.count({ where: { userId: user.id, status: "ACTIVE" } });
+    const totalLogs = await db.apiRequestLog.count({ where: { userId: user.id } });
+    const failedLogs = await db.apiRequestLog.count({ where: { userId: user.id, statusCode: { gte: 400 } } });
 
-  const webhooks = await db.developerWebhookEndpoint.findMany({ where: { userId: user.id } });
+    const webhooks = await db.developerWebhookEndpoint.findMany({ where: { userId: user.id } });
 
-  return {
-    activeKeys: totalKeys,
-    totalRequestsToday: totalLogs,
-    successfulRequests: Math.max(0, totalLogs - failedLogs),
-    failedRequests: failedLogs,
-    webhooksCount: webhooks.length,
-    webhookHealth: webhooks.every((w) => w.status === "ACTIVE") ? "HEALTHY" : "DEGRADED",
-  };
+    return {
+      activeKeys: totalKeys,
+      totalRequestsToday: totalLogs,
+      successfulRequests: Math.max(0, totalLogs - failedLogs),
+      failedRequests: failedLogs,
+      webhooksCount: webhooks.length,
+      webhookHealth: webhooks.every((w) => w.status === "ACTIVE") ? "HEALTHY" : "DEGRADED",
+    };
+  } catch (err) {
+    console.warn("[getDeveloperOverviewMetricsAction] DB read fallback:", err);
+    return {
+      activeKeys: 0,
+      totalRequestsToday: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      webhooksCount: 0,
+      webhookHealth: "DEGRADED",
+    };
+  }
 }

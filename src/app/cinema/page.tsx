@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ToastProvider } from "@/components/ui/toast";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "VANTA Cinema Studio — AI Film Workspace",
   description: "Professional multi-scene script breakdown, storyboard animation, and automated film timeline orchestration.",

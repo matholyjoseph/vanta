@@ -24,10 +24,15 @@ export class SupportService {
   }
 
   public async getUserTickets(userId: string) {
-    return db.supportTicket.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-    });
+    try {
+      return await db.supportTicket.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+      });
+    } catch (err) {
+      console.warn("[getUserTickets] DB read fallback:", err);
+      return [];
+    }
   }
 
   public async getAllTicketsAdmin() {

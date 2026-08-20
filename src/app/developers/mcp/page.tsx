@@ -4,6 +4,8 @@ import { getConnectedMcpAgentsAction, getMcpSessionLogsAction } from "@/app/acti
 import { McpDashboardClient } from "@/components/developers/mcp-dashboard-client";
 import { ToastProvider } from "@/components/ui/toast";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "MCP & AI Agent Integration — Developer Portal",
   description: "Connect external AI agents (ChatGPT, Claude, IDE Agents) via Model Context Protocol.",

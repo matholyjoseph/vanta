@@ -6,6 +6,8 @@ import { ImageStudioWorkspace } from "@/components/studio/image-studio-workspace
 import { ToastProvider } from "@/components/ui/toast";
 import { getActorContext } from "@/lib/guest-auth";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Multi-Model AI Image Studio — VANTA AI",
   description: "Create, edit, inpaint, outpaint, and generate product photography with AI.",
@@ -14,9 +16,9 @@ export const metadata: Metadata = {
 export default async function ImageStudioPage() {
   const actor = await getActorContext();
 
-  const [models, initialGenerations] = await Promise.all([
-    getImageModelsAction(),
-    db.generation.findMany({
+  let initialGenerations: any[] = [];
+  try {
+    initialGenerations = await db.generation.findMany({
       where: {
         OR: [
           actor.userId ? { userId: actor.userId } : {},
@@ -26,8 +28,12 @@ export default async function ImageStudioPage() {
       },
       orderBy: { createdAt: "desc" },
       take: 20,
-    }),
-  ]);
+    });
+  } catch (err) {
+    console.warn("[ImageStudioPage] Generations DB read fallback:", err);
+  }
+
+  const models = await getImageModelsAction();
 
   return (
     <ToastProvider>

@@ -18,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { getDeveloperOverviewMetricsAction } from "@/app/actions/developer-actions";
 import { ToastProvider } from "@/components/ui/toast";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Developer Portal — VANTA AI Platform",
   description: "Public API platform, API key management, webhooks, and developer tools.",

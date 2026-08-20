@@ -8,6 +8,8 @@ import { ProjectListClient } from "@/components/projects/project-list-client";
 import { ToastProvider } from "@/components/ui/toast";
 import { getAuthenticatedOrGuestUser } from "@/lib/guest-auth";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Projects — Vanta AI Cinema Studio",
   description: "Manage your multi-scene AI video projects and storyboards.",
@@ -17,7 +19,13 @@ export default async function ProjectsPage() {
   const user = await getAuthenticatedOrGuestUser();
   const userId = user.id;
 
-  const wallet = await db.creditWallet.findUnique({ where: { userId } });
+  let wallet: any = null;
+  try {
+    wallet = await db.creditWallet.findUnique({ where: { userId } });
+  } catch (err) {
+    console.warn("[ProjectsPage] Wallet DB read fallback:", err);
+  }
+
   const projects = await getProjectsAction();
 
   const userName = user.name || (user.email ? user.email.split("@")[0] : "Guest Creator");

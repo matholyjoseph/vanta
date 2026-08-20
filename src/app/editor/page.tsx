@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { getCinemaProjectsAction, createCinemaProjectAction } from "@/app/actions/cinema-actions";
 import { ToastProvider } from "@/components/ui/toast";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Advanced Video Editor — VANTA AI",
   description: "Non-linear video editing workspace for multi-track composition.",

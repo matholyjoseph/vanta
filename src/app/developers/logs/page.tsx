@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { getApiRequestLogsAction } from "@/app/actions/developer-actions";
 import { ToastProvider } from "@/components/ui/toast";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "API Request Logs — Developer Portal",
   description: "Inspect API request logs, status codes, latency, and credit usage.",

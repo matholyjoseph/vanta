@@ -9,6 +9,8 @@ import { type AssetItem } from "@/components/assets/asset-inspector";
 import { ToastProvider } from "@/components/ui/toast";
 import { getAuthenticatedOrGuestUser } from "@/lib/guest-auth";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Asset Library & Generation History — Vanta AI",
   description: "Central asset and generation history library.",
@@ -18,7 +20,13 @@ export default async function AssetsPage() {
   const user = await getAuthenticatedOrGuestUser();
   const userId = user.id;
 
-  const wallet = await db.creditWallet.findUnique({ where: { userId } });
+  let wallet: any = null;
+  try {
+    wallet = await db.creditWallet.findUnique({ where: { userId } });
+  } catch (err) {
+    console.warn("[AssetsPage] Wallet DB read fallback:", err);
+  }
+
   const initialAssetsData = await getAssetsAction({ page: 1, pageSize: 24 });
   const initialFolders = await getAssetFoldersAction();
 

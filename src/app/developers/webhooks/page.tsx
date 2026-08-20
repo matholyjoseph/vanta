@@ -4,6 +4,8 @@ import { getWebhookEndpointsAction } from "@/app/actions/developer-actions";
 import { WebhooksClient } from "@/components/developers/webhooks-client";
 import { ToastProvider } from "@/components/ui/toast";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Outbound Webhooks — Developer Portal",
   description: "Configure signed HMAC-SHA256 outbound webhooks for event notifications.",

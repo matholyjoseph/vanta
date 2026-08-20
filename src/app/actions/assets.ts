@@ -87,43 +87,58 @@ export async function getAssetsAction(params: GetAssetsParams = {}) {
     orderBy = { name: "asc" };
   }
 
-  const totalCount = await db.asset.count({ where });
+  try {
+    const totalCount = await db.asset.count({ where });
 
-  const assets = await db.asset.findMany({
-    where,
-    orderBy,
-    skip: (page - 1) * pageSize,
-    take: pageSize,
-    include: {
-      folder: {
-        select: { id: true, name: true, color: true },
+    const assets = await db.asset.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        folder: {
+          select: { id: true, name: true, color: true },
+        },
       },
-    },
-  });
+    });
 
-  return {
-    assets,
-    totalCount,
-    page,
-    totalPages: Math.ceil(totalCount / pageSize),
-  };
+    return {
+      assets,
+      totalCount,
+      page,
+      totalPages: Math.ceil(totalCount / pageSize),
+    };
+  } catch (err) {
+    console.warn("[getAssetsAction] DB read fallback:", err);
+    return {
+      assets: [],
+      totalCount: 0,
+      page: 1,
+      totalPages: 0,
+    };
+  }
 }
 
 export async function getAssetFoldersAction() {
-  const actor = await getActorContext();
-  if (!actor.userId) return [];
+  try {
+    const actor = await getActorContext();
+    if (!actor.userId) return [];
 
-  const folders = await db.assetFolder.findMany({
-    where: { userId: actor.userId },
-    orderBy: { name: "asc" },
-    include: {
-      _count: {
-        select: { assets: { where: { deletedAt: null } } },
+    const folders = await db.assetFolder.findMany({
+      where: { userId: actor.userId },
+      orderBy: { name: "asc" },
+      include: {
+        _count: {
+          select: { assets: { where: { deletedAt: null } } },
+        },
       },
-    },
-  });
+    });
 
-  return folders;
+    return folders;
+  } catch (err) {
+    console.warn("[getAssetFoldersAction] DB read fallback:", err);
+    return [];
+  }
 }
 
 export async function createAssetFolderAction(name: string, color?: string) {

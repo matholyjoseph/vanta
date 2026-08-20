@@ -11,29 +11,34 @@ async function getAuthenticatedUserId(): Promise<string> {
 }
 
 export async function getProjectsAction(searchQuery?: string, sortBy: "updatedAt" | "name" = "updatedAt") {
-  const userId = await getAuthenticatedUserId();
+  try {
+    const userId = await getAuthenticatedUserId();
 
-  const where: Record<string, unknown> = { userId };
-  if (searchQuery && searchQuery.trim().length > 0) {
-    where.OR = [
-      { name: { contains: searchQuery.trim(), mode: "insensitive" } },
-      { description: { contains: searchQuery.trim(), mode: "insensitive" } },
-    ];
-  }
+    const where: Record<string, unknown> = { userId };
+    if (searchQuery && searchQuery.trim().length > 0) {
+      where.OR = [
+        { name: { contains: searchQuery.trim(), mode: "insensitive" } },
+        { description: { contains: searchQuery.trim(), mode: "insensitive" } },
+      ];
+    }
 
-  const orderBy = sortBy === "name" ? { name: "asc" as const } : { updatedAt: "desc" as const };
+    const orderBy = sortBy === "name" ? { name: "asc" as const } : { updatedAt: "desc" as const };
 
-  const projects = await db.project.findMany({
-    where,
-    orderBy,
-    include: {
-      scenes: {
-        select: { id: true },
+    const projects = await db.project.findMany({
+      where,
+      orderBy,
+      include: {
+        scenes: {
+          select: { id: true },
+        },
       },
-    },
-  });
+    });
 
-  return projects;
+    return projects;
+  } catch (err) {
+    console.warn("[getProjectsAction] DB read fallback:", err);
+    return [];
+  }
 }
 
 export async function createProjectAction(name: string, description?: string) {

@@ -304,54 +304,44 @@ export async function deleteAccountAction() {
 }
 
 export async function continueAsGuestAction() {
-  let rawToken: string | null = null;
-  let expiresAt: Date | null = null;
-
   try {
     const cookieStore = await cookies();
     const existingToken = cookieStore.get(GUEST_COOKIE_NAME)?.value;
+    const rawToken = existingToken || crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const expiresAt = new Date(Date.now() + TEST_MODE_CONFIG.GUEST_SESSION_EXPIRY_HOURS * 60 * 60 * 1000);
 
-    if (existingToken) {
-      const tokenHash = crypto.createHash("sha256").update(existingToken).digest("hex");
+    // Try saving / updating session in database if available
+    try {
       const session = await db.guestSession.findUnique({
         where: { sessionTokenHash: tokenHash },
       });
-
-      if (session && session.status === "ACTIVE" && session.expiresAt > new Date()) {
-        try {
-          await db.guestSession.update({
-            where: { id: session.id },
-            data: { lastActiveAt: new Date() },
-          });
-        } catch {}
-        rawToken = existingToken;
-        expiresAt = session.expiresAt;
+      if (session) {
+        await db.guestSession.update({
+          where: { id: session.id },
+          data: { lastActiveAt: new Date() },
+        });
+      } else {
+        await db.guestSession.create({
+          data: {
+            sessionTokenHash: tokenHash,
+            testCreditBalance: TEST_MODE_CONFIG.GUEST_TEST_CREDITS,
+            status: "ACTIVE",
+            expiresAt,
+          },
+        });
       }
+    } catch (dbErr) {
+      console.warn("[continueAsGuestAction] Database write skipped (using cookie session):", dbErr);
     }
 
-    if (!rawToken) {
-      const newRawToken = crypto.randomBytes(32).toString("hex");
-      const tokenHash = crypto.createHash("sha256").update(newRawToken).digest("hex");
-      expiresAt = new Date(Date.now() + TEST_MODE_CONFIG.GUEST_SESSION_EXPIRY_HOURS * 60 * 60 * 1000);
-
-      await db.guestSession.create({
-        data: {
-          sessionTokenHash: tokenHash,
-          testCreditBalance: TEST_MODE_CONFIG.GUEST_TEST_CREDITS,
-          status: "ACTIVE",
-          expiresAt,
-        },
-      });
-
-      rawToken = newRawToken;
-    }
-
+    // Always set guest cookie
     cookieStore.set(GUEST_COOKIE_NAME, rawToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      expires: expiresAt || undefined,
+      expires: expiresAt,
     });
   } catch (err) {
     console.error("[continueAsGuestAction Error]", err);

@@ -11,16 +11,21 @@ async function getAuthenticatedUser() {
 }
 
 export async function getCinemaProjectsAction() {
-  const user = await getAuthenticatedUser();
-  return db.project.findMany({
-    where: { userId: user.id },
-    orderBy: { updatedAt: "desc" },
-    include: {
-      scenes: { include: { shots: { include: { takes: true } } } },
-      elements: true,
-      exports: { orderBy: { createdAt: "desc" } },
-    },
-  });
+  try {
+    const user = await getAuthenticatedUser();
+    return await db.project.findMany({
+      where: { userId: user.id },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        scenes: { include: { shots: { include: { takes: true } } } },
+        elements: true,
+        exports: { orderBy: { createdAt: "desc" } },
+      },
+    });
+  } catch (err) {
+    console.warn("[getCinemaProjectsAction] DB read fallback:", err);
+    return [];
+  }
 }
 
 export async function getCinemaProjectDetailsAction(projectId: string) {

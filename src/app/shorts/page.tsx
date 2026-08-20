@@ -6,6 +6,8 @@ import { getAuthenticatedOrGuestUser } from "@/lib/guest-auth";
 import { ShortsHomeClient } from "@/components/shorts/shorts-home-client";
 import { ToastProvider } from "@/components/ui/toast";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "VANTA Shorts Studio — Turn Long Videos Into Shorts",
   description: "AI viral social clipping engine for TikTok, Instagram Reels, and YouTube Shorts.",
@@ -15,11 +17,16 @@ export default async function ShortsHomePage() {
   const user = await getAuthenticatedOrGuestUser();
   const projects = await getShortsProjectsAction();
 
-  const userAssets = await db.asset.findMany({
-    where: { userId: user.id, type: "VIDEO" },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-  });
+  let userAssets: any[] = [];
+  try {
+    userAssets = await db.asset.findMany({
+      where: { userId: user.id, type: "VIDEO" },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+  } catch (err) {
+    console.warn("[ShortsHomePage] DB read fallback:", err);
+  }
 
   return (
     <ToastProvider>

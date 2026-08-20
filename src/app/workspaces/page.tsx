@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ToastProvider } from "@/components/ui/toast";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Workspaces — VANTA AI",
   description: "Manage team workspaces, collaborative projects, and shared assets.",

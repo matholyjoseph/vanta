@@ -8,6 +8,8 @@ import { DashboardGeneration } from "@/components/dashboard/dashboard-content";
 import { ToastProvider } from "@/components/ui/toast";
 import { getActorContext, getAuthenticatedOrGuestUser } from "@/lib/guest-auth";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "AI Video Generation Studio — Vanta AI",
   description: "Command industry-leading generation models with precision engineering.",
@@ -17,17 +19,22 @@ export default async function StudioVideoPage() {
   const actor = await getActorContext();
   const user = await getAuthenticatedOrGuestUser();
 
-  const generations = await db.generation.findMany({
-    where: {
-      OR: [
-        actor.userId ? { userId: actor.userId } : {},
-        actor.guestSessionId ? { guestSessionId: actor.guestSessionId } : {},
-      ],
-    },
-    orderBy: { createdAt: "desc" },
-    include: { model: true },
-    take: 20,
-  });
+  let generations: any[] = [];
+  try {
+    generations = await db.generation.findMany({
+      where: {
+        OR: [
+          actor.userId ? { userId: actor.userId } : {},
+          actor.guestSessionId ? { guestSessionId: actor.guestSessionId } : {},
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      include: { model: true },
+      take: 20,
+    });
+  } catch (err) {
+    console.warn("[StudioVideoPage] Generations DB read fallback:", err);
+  }
 
   const userName = user.name || (user.email ? user.email.split("@")[0] : "Guest Creator");
   const creditBalance = actor.testCredits;

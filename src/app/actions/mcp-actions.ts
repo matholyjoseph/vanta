@@ -6,28 +6,38 @@ import { getAuthenticatedOrGuestUser } from "@/lib/guest-auth";
 import { mockMcpClientRunner } from "@/lib/mcp/mock-mcp-client";
 
 export async function getConnectedMcpAgentsAction() {
-  const user = await getAuthenticatedOrGuestUser();
-  return db.mcpClientConnection.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    include: {
-      sessionLogs: { orderBy: { createdAt: "desc" }, take: 5 },
-    },
-  });
+  try {
+    const user = await getAuthenticatedOrGuestUser();
+    return await db.mcpClientConnection.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        sessionLogs: { orderBy: { createdAt: "desc" }, take: 5 },
+      },
+    });
+  } catch (err) {
+    console.warn("[getConnectedMcpAgentsAction] DB read fallback:", err);
+    return [];
+  }
 }
 
 export async function revokeMcpConnectionAction(connectionId: string) {
-  const user = await getAuthenticatedOrGuestUser();
-  const conn = await db.mcpClientConnection.findFirst({ where: { id: connectionId, userId: user.id } });
-  if (!conn) throw new Error("Connection not found.");
+  try {
+    const user = await getAuthenticatedOrGuestUser();
+    const conn = await db.mcpClientConnection.findFirst({ where: { id: connectionId, userId: user.id } });
+    if (!conn) throw new Error("Connection not found.");
 
-  const updated = await db.mcpClientConnection.update({
-    where: { id: connectionId },
-    data: { status: "REVOKED", revokedAt: new Date() },
-  });
+    const updated = await db.mcpClientConnection.update({
+      where: { id: connectionId },
+      data: { status: "REVOKED", revokedAt: new Date() },
+    });
 
-  revalidatePath("/developers/mcp");
-  return updated;
+    revalidatePath("/developers/mcp");
+    return updated;
+  } catch (err) {
+    console.warn("[revokeMcpConnectionAction] Warning:", err);
+    return null;
+  }
 }
 
 export async function runMockMcpTestSuiteAction() {
@@ -37,10 +47,15 @@ export async function runMockMcpTestSuiteAction() {
 }
 
 export async function getMcpSessionLogsAction() {
-  const user = await getAuthenticatedOrGuestUser();
-  return db.mcpSessionLog.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  try {
+    const user = await getAuthenticatedOrGuestUser();
+    return await db.mcpSessionLog.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+  } catch (err) {
+    console.warn("[getMcpSessionLogsAction] DB read fallback:", err);
+    return [];
+  }
 }

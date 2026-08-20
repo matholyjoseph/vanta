@@ -6,6 +6,8 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
 import { ToastProvider } from "@/components/ui/toast";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Dashboard — Vanta AI Studio",
   description: "Manage your AI video generations, projects, and creative assets.",
